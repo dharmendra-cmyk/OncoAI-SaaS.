@@ -8,5 +8,5 @@ dependencies = [
     "pydantic"
 ]
 [tool.vercel]
-entrypoint = "api/processor.py:app"
+entrypoint = "api.processor:app"
 
