@@ -1,0 +1,2 @@
+[tool.vercel]
+entrypoint = "api_pathology_processor:app"
