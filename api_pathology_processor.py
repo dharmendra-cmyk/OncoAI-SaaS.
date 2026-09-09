@@ -11,7 +11,7 @@ from google.genai import types
 
 from oncoai_guardrails import process_and_guardrail_extraction
 
-DATABASE_URL = "sqlite:///./oncoai_audit.db"
+DATABASE_URL = "sqlite:////tmp/oncoai_audit.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
