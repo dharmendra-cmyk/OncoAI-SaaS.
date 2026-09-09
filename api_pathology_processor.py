@@ -9,7 +9,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from google import genai
 from google.genai import types
 
-from oncoai_guardrails import process_and_guardrail_extraction
+
 
 DATABASE_URL = "sqlite:////tmp/oncoai_audit.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
