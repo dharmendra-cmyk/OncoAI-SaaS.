@@ -1,2 +1,8 @@
+fastapi
+uvicorn
+pydantic
+sqlalchemy
+google-genai
 streamlit
 pdfplumber
+requests
