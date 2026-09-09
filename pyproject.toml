@@ -7,5 +7,6 @@ dependencies = [
     "uvicorn",
     "pydantic"
 ]
-
+[tool.vercel]
+entrypoint = "api/processor.py:app"
 
