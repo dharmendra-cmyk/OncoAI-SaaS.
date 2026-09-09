@@ -2,7 +2,11 @@
 name = "oncoai-saas"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic"
+]
 
 [tool.vercel]
 entrypoint = "api_pathology_processor:app"
