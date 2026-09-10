@@ -4,6 +4,7 @@ import time
 import io
 import pandas as pd
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -228,3 +229,40 @@ def get_audit_history(db: Session = Depends(get_db)):
             "extractions": [{"biomarker": e.biomarker, "status": e.detection_status} for e in extractions]
         })
     return history
+
+@app.get("/api/v1/export-audits")
+def export_audits(db: Session = Depends(get_db)):
+    try:
+        reports = db.query(PathologyReportDB).all()
+        data = []
+        for r in reports:
+            extractions = db.query(ExtractionAuditDB).filter(ExtractionAuditDB.report_id == r.id).all()
+            if extractions:
+                for e in extractions:
+                    data.append({
+                        "report_id": r.id,
+                        "created_at": r.created_at,
+                        "status": r.status,
+                        "overall_confidence": r.overall_confidence,
+                        "biomarker": e.biomarker,
+                        "detection_status": e.detection_status,
+                        "confidence_score": e.confidence_score
+                    })
+            else:
+                data.append({
+                    "report_id": r.id,
+                    "created_at": r.created_at,
+                    "status": r.status,
+                    "overall_confidence": r.overall_confidence,
+                    "biomarker": "N/A",
+                    "detection_status": "N/A",
+                    "confidence_score": r.overall_confidence
+                })
+        df = pd.DataFrame(data)
+        stream = io.StringIO()
+        df.to_csv(stream, index=False)
+        response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+        response.headers["Content-Disposition"] = "attachment; filename=oncoai_audit_export.csv"
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export error: {str(e)}")
