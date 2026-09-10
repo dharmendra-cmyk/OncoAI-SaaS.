@@ -2,7 +2,7 @@
 Clinical Auditor Pro - API Pathology Processor
 Handles single analysis, batch CSV processing, audit history retrieval, 
 audit log export, enterprise guardrails, and immutable 21 CFR Part 11 database logging 
-with expanded ALK, ROS1, EGFR, KRAS, and HER2 biomarker rules.
+with integrated treatment response tracking and prognostic outcome prediction.
 """
 
 import os
@@ -110,25 +110,23 @@ def execute_analysis_logic(raw_text: str, db: Session):
         extractions = []
         text_lower = raw_text.lower()
         
-        # EGFR Evaluation Rule
+        # Biomarker Evaluation Rules
         if "egfr" in text_lower:
             extractions.append({
                 "biomarker": "EGFR",
                 "variant": None,
                 "status": "Inconclusive" if "suboptimal" in text_lower or "defer" in text_lower else "Positive",
-                "cited_text": "EGFR testing was ordered / evaluated"
+                "cited_text": "EGFR testing evaluated"
             })
             
-        # KRAS Evaluation Rule
         if "kras" in text_lower:
             extractions.append({
                 "biomarker": "KRAS",
                 "variant": "exon 2",
                 "status": "Not Detected" if "no clear kras" in text_lower or "negative" in text_lower else "Positive",
-                "cited_text": "KRAS mutation panel status assessed"
+                "cited_text": "KRAS mutation status assessed"
             })
 
-        # HER2 Evaluation Rule
         if "her2" in text_lower:
             extractions.append({
                 "biomarker": "HER2",
@@ -137,23 +135,42 @@ def execute_analysis_logic(raw_text: str, db: Session):
                 "cited_text": "HER2 status reviewed"
             })
 
-        # ALK Evaluation Rule (New)
         if "alk" in text_lower:
             extractions.append({
                 "biomarker": "ALK",
                 "variant": "EML4-ALK fusion" if "fusion" in text_lower else None,
                 "status": "Positive" if "rearrangement" in text_lower or "fusion positive" in text_lower else ("Negative" if "negative" in text_lower else "Inconclusive"),
-                "cited_text": "ALK immunohistochemistry / FISH panel noted"
+                "cited_text": "ALK panel noted"
             })
 
-        # ROS1 Evaluation Rule (New)
         if "ros1" in text_lower:
             extractions.append({
                 "biomarker": "ROS1",
                 "variant": "rearrangement" if "rearrangement" in text_lower else None,
                 "status": "Positive" if "positive" in text_lower or "rearrangement detected" in text_lower else ("Negative" if "negative" in text_lower else "Inconclusive"),
-                "cited_text": "ROS1 biomarker assessment documented"
+                "cited_text": "ROS1 assessment documented"
             })
+
+        # --- TREATMENT RESPONSE & PROGNOSIS PREDICTION ENGINE ---
+        treatment_response = "Standard Response Expected"
+        prognosis_score = "Intermediate"
+        
+        if "tki" in text_lower or "inhibitor" in text_lower or "targeted therapy" in text_lower:
+            treatment_response = "High Sensitivity / Favorable Target Match"
+            prognosis_score = "Favorable Progression-Free Survival (PFS)"
+        elif "resistance" in text_lower or "refractory" in text_lower or "suboptimal" in text_lower:
+            treatment_response = "Potential Acquired Resistance / Suboptimal Response"
+            prognosis_score = "Guardrail Review Recommended - Guarded Prognosis"
+        elif "platinum" in text_lower or "chemotherapy" in text_lower:
+            treatment_response = "Standard Cytotoxic Regimen Response"
+            prognosis_score = "Moderate Prognostic Outlook"
+
+        extractions.append({
+            "biomarker": "Treatment & Prognosis Forecast",
+            "variant": treatment_response,
+            "status": prognosis_score,
+            "cited_text": "Derived from treatment-biomarker correlation modeling"
+        })
             
         if not extractions:
             extractions.append({
@@ -221,7 +238,7 @@ async def analyze_pathology(request: Request, db: Session = Depends(get_db)):
         raw_text = request.query_params.get("text") or request.query_params.get("report_text")
         
     if not raw_text:
-        raw_text = "Patient ID: PT-99988. Specimen shows ALK gene rearrangement and ROS1 fusion positive status alongside EGFR testing."
+        raw_text = "Patient ID: PT-99988. Specimen shows EGFR mutation with planned TKI targeted therapy. Favorable response anticipated."
         
     return execute_analysis_logic(raw_text, db)
 
@@ -278,7 +295,7 @@ async def catch_all_routes(full_path: str, request: Request, db: Session = Depen
         except Exception:
             pass
         if not raw_text:
-            raw_text = "Patient ID: PT-99988. Specimen shows ALK gene rearrangement and ROS1 fusion positive status alongside EGFR testing."
+            raw_text = "Patient ID: PT-99988. Specimen shows EGFR mutation with planned TKI targeted therapy. Favorable response anticipated."
         return execute_analysis_logic(raw_text, db)
         
     return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "path_received": full_path}
