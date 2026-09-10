@@ -1,7 +1,8 @@
 """
 Clinical Auditor Pro - Main FastAPI Processor Backend
 Handles pathology report extraction, guardrail-based confidence scoring,
-PostgreSQL database logging, and 21 CFR Part 11 electronic sign-off workflows.
+PostgreSQL database logging, 21 CFR Part 11 electronic sign-off workflows,
+and Allometric Scaling / FIH Dose Selection.
 """
 
 import os
@@ -18,7 +19,7 @@ from models import init_db, ClinicalAuditLog
 app = FastAPI(
     title="Clinical Auditor Pro API",
     description="Zero-Hallucination Oncology Biomarker Extraction & Compliance Suite",
-    version="2.5.0"
+    version="2.6.0"
 )
 
 # Initialize Database SessionLocal
@@ -40,6 +41,13 @@ class PathologyInput(BaseModel):
 class ElectronicSignatureRequest(BaseModel):
     signed_by: str
     signature_reason: str
+
+
+class FIHRequest(BaseModel):
+    compound_name: str
+    animal_noael_mg_kg: float
+    animal_species: str = "mouse"  # mouse, rat, dog, monkey
+    human_weight_kg: float = 60.0
 
 
 @app.get("/")
@@ -147,4 +155,43 @@ def sign_audit_report(report_id: str, sig_data: ElectronicSignatureRequest, db: 
         "signed_by": record.signed_by,
         "signed_at": str(record.signed_at),
         "signature_reason": record.signature_reason
+    }
+
+
+@app.post("/calculate-fih-dose")
+def calculate_fih_dose(payload: FIHRequest):
+    """
+    Calculates First-in-Human (FIH) starting dose using standard allometric scaling 
+    and animal-to-human conversion factors (FDA guidelines).
+    """
+    km_factors = {
+        "mouse": 3.0,
+        "rat": 6.0,
+        "dog": 20.0,
+        "monkey": 12.0,
+        "human": 37.0
+    }
+    
+    species = payload.animal_species.lower()
+    if species not in km_factors:
+        raise HTTPException(status_code=400, detail=f"Unsupported species. Choose from: {list(km_factors.keys())}")
+        
+    animal_km = km_factors[species]
+    human_km = km_factors["human"]
+    
+    # Human Equivalent Dose (HED) calculation = Animal NOAEL * (Animal Km / Human Km)
+    hed_mg_kg = payload.animal_noael_mg_kg * (animal_km / human_km)
+    recommended_starting_dose_mg = hed_mg_kg * payload.human_weight_kg
+    
+    # Apply standard 1/10th safety factor for Phase 1 FIH trials
+    conservative_fih_dose = recommended_starting_dose_mg / 10.0
+    
+    return {
+        "compound": payload.compound_name,
+        "species_used": species,
+        "animal_noael_mg_kg": payload.animal_noael_mg_kg,
+        "human_equivalent_dose_hed_mg_kg": round(hed_mg_kg, 4),
+        "recommended_maximum_starting_dose_mg": round(recommended_starting_dose_mg, 2),
+        "conservative_fih_dose_mg_1_10th": round(conservative_fih_dose, 2),
+        "compliance_note": "Calculated in accordance with FDA Guidance for Industry: Estimating the Maximum Safe Starting Dose in Initial Clinical Trials for Therapeutics in Adult Volunteers."
     }
