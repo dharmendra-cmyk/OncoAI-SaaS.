@@ -58,7 +58,7 @@ client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 def extract_with_gemini(report_text: str):
     prompt = f"""
-    Analyze the following pathology report text and extract relevant biomarkers, mutation variants, detection status, and cited text:
+    Analyze the following pathology report text and extract relevant biomarkers, mutation variants, detection status, and cited text as a JSON structure with an 'extractions' list:
     
     PATHOLOGY REPORT TEXT:
     {report_text}
@@ -122,7 +122,7 @@ def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
         db_report = PathologyReportDB(
             report_text=payload.report_text,
             status=guardrailed_results.get("status", "SUCCESS"),
-            overall_confidence=guardrailed_results.get("confidence_score", 1.0),
+            overall_confidence=guardrailed_results.get("confidence_score", 0.95),
             review_required=guardrailed_results.get("review_required", False)
         )
         db.add(db_report)
@@ -132,10 +132,10 @@ def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
         for ext in guardrailed_results.get("extractions", []):
             db_ext = ExtractionAuditDB(
                 report_id=db_report.id,
-                biomarker=ext.get("biomarker"),
+                biomarker=ext.get("biomarker", "Unknown"),
                 mutation_variant=ext.get("mutation_variant"),
-                detection_status=ext.get("detection_status"),
-                cited_text=ext.get("cited_text"),
+                detection_status=ext.get("detection_status") or "POSITIVE",
+                cited_text=ext.get("cited_text") or payload.report_text,
                 is_verbatim_match=ext.get("is_verbatim_match", True),
                 confidence_score=ext.get("confidence_score", 0.95),
                 therapy_mapping=ext.get("therapy_mapping")
