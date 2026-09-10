@@ -1,7 +1,7 @@
 """
 Clinical Auditor Pro - API Pathology Processor
 Handles single analysis, batch CSV processing, audit history retrieval, 
-enterprise guardrails, quota fallback, and immutable 21 CFR Part 11 database logging.
+audit log export, enterprise guardrails, and immutable 21 CFR Part 11 database logging.
 """
 
 import os
@@ -68,6 +68,42 @@ def fetch_history_records(db: Session):
 @app.get("/get-audit-history/")
 def get_audit_history(db: Session = Depends(get_db)):
     return fetch_history_records(db)
+
+@app.get("/export-audit")
+@app.get("/export-audit/")
+@app.get("/api/export-audit")
+@app.get("/download-audit")
+@app.get("/download-audit/")
+def export_audit_logs(db: Session = Depends(get_db)):
+    """
+    Exports all immutable audit logs as a downloadable compliance CSV file.
+    """
+    try:
+        records = db.query(ClinicalAuditLog).order_by(ClinicalAuditLog.id.desc()).all()
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["id", "report_id", "status", "confidence_score", "review_required", "compliance_standard", "raw_pathology_text"])
+        
+        for rec in records:
+            writer.writerow([
+                rec.id,
+                rec.report_id,
+                rec.status,
+                rec.confidence_score,
+                rec.review_required,
+                rec.compliance_standard,
+                (rec.raw_pathology_text or "").replace("\n", " ")
+            ])
+            
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=compliance_audit_export.csv"}
+        )
+    except Exception as e:
+        logger.error(f"Error exporting audit logs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 class PathologyRequest(BaseModel):
     text: Optional[str] = None
