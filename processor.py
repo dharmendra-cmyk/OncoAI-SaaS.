@@ -1,7 +1,7 @@
 """
 Clinical Auditor Pro - API Pathology Processor
-Handles single analysis, batch CSV processing, enterprise guardrails, 
-quota fallback handling, and immutable 21 CFR Part 11 database logging.
+Handles single analysis, batch CSV processing, audit history retrieval, 
+enterprise guardrails, quota fallback, and immutable 21 CFR Part 11 database logging.
 """
 
 import os
@@ -36,9 +36,36 @@ def get_db():
 
 @app.get("/")
 @app.get("/health")
-@app.get("/{path:path}")
-def health_check(path: str = ""):
+def health_check():
     return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
+
+@app.get("/audit-history")
+@app.get("/audit-history/")
+@app.get("/api/audit-history")
+@app.get("/api/audit-history/")
+def get_audit_history(db: Session = Depends(get_db)):
+    """
+    Retrieves all immutable 21 CFR Part 11 audit records from the database.
+    """
+    try:
+        records = db.query(ClinicalAuditLog).order_by(ClinicalAuditLog.id.desc()).all()
+        history_list = []
+        for rec in records:
+            history_list.append({
+                "id": rec.id,
+                "report_id": rec.report_id,
+                "status": rec.status,
+                "confidence_score": rec.confidence_score,
+                "review_required": rec.review_required,
+                "raw_pathology_text": rec.raw_pathology_text,
+                "extractions_json": rec.extractions_json,
+                "compliance_standard": rec.compliance_standard,
+                "created_at": str(rec.created_at) if hasattr(rec, 'created_at') else None
+            })
+        return history_list
+    except Exception as e:
+        logger.error(f"Error fetching audit history: {str(e)}")
+        return []
 
 class PathologyRequest(BaseModel):
     text: Optional[str] = None
@@ -132,10 +159,6 @@ def analyze_pathology(payload: dict = None, db: Session = Depends(get_db)):
 @app.post("/batch-analyze/")
 @app.post("/api/batch-analyze")
 async def batch_analyze_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """
-    Processes an uploaded CSV file containing multiple pathology records,
-    runs guardrails on each, saves logs, and returns a downloadable summary CSV.
-    """
     contents = await file.read()
     decoded = contents.decode("utf-8")
     reader = csv.DictReader(io.StringIO(decoded))
@@ -160,8 +183,6 @@ async def batch_analyze_csv(file: UploadFile = File(...), db: Session = Depends(
             processed_count += 1
 
     output.seek(0)
-    logger.info(f"Successfully processed batch CSV with {processed_count} records.")
-    
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
