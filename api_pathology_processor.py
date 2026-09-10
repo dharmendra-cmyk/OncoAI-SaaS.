@@ -100,7 +100,7 @@ def extract_with_gemini(report_text: str) -> dict:
     """
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+       model="gemini-1.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -112,7 +112,7 @@ def extract_with_gemini(report_text: str) -> dict:
 
 @app.get("/")
 def health_check():
-    return {"status": "HEALTHY", "engine": "Gemini 2.5 Flash + Guardrails"}
+    return {"status": "HEALTHY", "engine": "Gemini 1.5 Flash + Guardrails"}
 
 @app.post("/api/v1/analyze-pathology")
 def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
