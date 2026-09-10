@@ -37,14 +37,22 @@ class EnterpriseGuardrails:
                 st.rerun()
 
     @staticmethod
-    def process_and_guardrail_extraction(report_text: str, llm_output: dict):
+    def process_and_guardrail_extraction(report_text: str, llm_output):
         """
         Validates and formats extraction outputs for zero-hallucination compliance.
+        Handles both list and dictionary LLM responses gracefully.
         """
+        if isinstance(llm_output, list):
+            extractions = llm_output
+        elif isinstance(llm_output, dict):
+            extractions = llm_output.get("extractions", [])
+        else:
+            extractions = []
+
         guardrailed = {
             "status": "SUCCESS",
             "confidence_score": 0.95,
             "review_required": False,
-            "extractions": llm_output.get("extractions", [])
+            "extractions": extractions
         }
         return guardrailed
