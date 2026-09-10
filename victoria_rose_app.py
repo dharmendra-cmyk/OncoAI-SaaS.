@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import pandas as pd
 
 st.set_page_config(
     page_title="Clinical Auditor Pro",
@@ -10,10 +11,8 @@ st.set_page_config(
 st.title("🧬 Clinical Auditor Pro: Zero-Hallucination Pipeline")
 st.markdown("Automated strategic analysis of clinical protocols powered by Gemini and Enterprise Guardrails.")
 
-# Live API Endpoint on Render
 API_BASE_URL = "https://oncoai-saas.onrender.com"
 
-# Sidebar for Navigation / Status
 st.sidebar.header("System Status")
 try:
     health_res = requests.get(f"{API_BASE_URL}/")
@@ -24,11 +23,10 @@ try:
 except Exception:
     st.sidebar.error("Backend: OFFLINE")
 
-# Main Interface Tabs
-tab1, tab2 = st.tabs(["📊 Analyze Pathology", "📜 Audit History"])
+tab1, tab2, tab3 = st.tabs(["📊 Analyze Pathology", "📁 Batch CSV Processing", "📜 Audit History"])
 
 with tab1:
-    st.subheader("Pathology Report Analysis")
+    st.subheader("Single Pathology Report Analysis")
     report_input = st.text_area(
         "Paste Pathology Report Text:",
         placeholder="Enter patient biomarker findings, mutation status, and clinical notes here...",
@@ -48,7 +46,6 @@ with tab1:
                         result = response.json()
                         st.success(f"Analysis Successful! Saved under Report ID: **{result.get('report_id')}**")
                         
-                        # Display Metrics
                         col1, col2, col3 = st.columns(3)
                         col1.metric("Status", result.get("status"))
                         col2.metric("Confidence Score", f"{result.get('confidence_score', 0.0) * 100:.1f}%")
@@ -62,6 +59,33 @@ with tab1:
                     st.error(f"Failed to connect to backend: {str(e)}")
 
 with tab2:
+    st.subheader("Batch CSV Pathology Ingestion")
+    st.markdown("Upload a CSV file containing a column named `report_text` to process multiple patient files concurrently.")
+    
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+    
+    if uploaded_file is not None:
+        df_preview = pd.read_csv(uploaded_file)
+        st.write("Data Preview:")
+        st.dataframe(df_preview.head())
+        
+        if st.button("Process Batch Upload", type="primary"):
+            with st.spinner("Executing batch validation and auditing pipeline..."):
+                try:
+                    uploaded_file.seek(0)
+                    files = {"file": (uploaded_file.name, uploaded_file, "text/csv")}
+                    response = requests.post(f"{API_BASE_URL}/api/v1/batch-analyze-pathology", files=files)
+                    
+                    if response.status_code == 200:
+                        batch_res = response.json()
+                        st.success(f"Successfully processed {batch_res.get('batch_processed')} records!")
+                        st.json(batch_res.get("audit_results"))
+                    else:
+                        st.error(f"Batch Error: {response.text}")
+                except Exception as e:
+                    st.error(f"Failed to connect for batch processing: {str(e)}")
+
+with tab3:
     st.subheader("Recent Database Audit Logs")
     if st.button("Refresh Audit History"):
         try:
