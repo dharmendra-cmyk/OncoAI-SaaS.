@@ -86,8 +86,29 @@ with tab2:
                     st.error(f"Failed to connect for batch processing: {str(e)}")
 
 with tab3:
-    st.subheader("Recent Database Audit Logs")
-    if st.button("Refresh Audit History"):
+    st.subheader("Recent Database Audit Logs & Export Tools")
+    
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        refresh_logs = st.button("Refresh Audit History")
+    with col_b:
+        if st.button("📥 Download Compliance Audit CSV"):
+            try:
+                export_res = requests.get(f"{API_BASE_URL}/api/v1/export-audits")
+                if export_res.status_code == 200:
+                    st.download_button(
+                        label="Click here to save CSV",
+                        data=export_res.content,
+                        file_name="oncoai_audit_export.csv",
+                        mime="text/csv"
+                    )
+                    st.success("Audit log export ready for download!")
+                else:
+                    st.error("Failed to generate audit export.")
+            except Exception as e:
+                st.error(f"Export connection error: {str(e)}")
+
+    if refresh_logs or True: # Load by default
         try:
             history_res = requests.get(f"{API_BASE_URL}/api/v1/audit-history")
             if history_res.status_code == 200:
