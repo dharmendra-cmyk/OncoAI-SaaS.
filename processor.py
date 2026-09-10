@@ -1,7 +1,7 @@
 """
 Clinical Auditor Pro - API Pathology Processor
 Handles analysis requests, enterprise guardrails, quota fallback handling, 
-and immutable 21 CFR Part 11 database logging.
+and immutable 21 CFR Part 11 database logging with universal catch-all routing.
 """
 
 import os
@@ -32,9 +32,10 @@ def get_db():
 
 @app.get("/")
 @app.get("/health")
-def health_check():
+@app.get("/{path:path}")
+def health_check(path: str = ""):
     """
-    Health check endpoints for Streamlit frontend status indicator.
+    Health check and wildcard GET handler for frontend status connectivity.
     """
     return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
 
@@ -116,10 +117,13 @@ def execute_analysis_logic(raw_text: str, db: Session):
     
     return audited_result
 
-# Register all possible route permutations to eliminate 404 errors completely
+# Universal Catch-All Route: Captures any POST path sent by the frontend
 @app.post("/analyze")
 @app.post("/analyze/")
 @app.post("/api/analyze")
 @app.post("/api/analyze/")
-def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
+@app.post("/{path:path}")
+def analyze_pathology(path: str = "", payload: PathologyRequest = None, db: Session = Depends(get_db)):
+    if payload is None or not payload.text:
+        raise HTTPException(status_code=400, detail="Payload text is required")
     return execute_analysis_logic(payload.text, db)
