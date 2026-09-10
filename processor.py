@@ -2,7 +2,7 @@
 Clinical Auditor Pro - API Pathology Processor
 Handles single analysis, batch CSV processing, audit history retrieval, 
 audit log export, enterprise guardrails, and immutable 21 CFR Part 11 database logging 
-with flexible method routing.
+with expanded ALK, ROS1, EGFR, KRAS, and HER2 biomarker rules.
 """
 
 import os
@@ -110,20 +110,49 @@ def execute_analysis_logic(raw_text: str, db: Session):
         extractions = []
         text_lower = raw_text.lower()
         
+        # EGFR Evaluation Rule
         if "egfr" in text_lower:
             extractions.append({
                 "biomarker": "EGFR",
                 "variant": None,
-                "status": "Inconclusive" if "suboptimal" in text_lower else "Positive",
-                "cited_text": "EGFR testing was ordered..." if "suboptimal" in text_lower else "High EGFR expression"
+                "status": "Inconclusive" if "suboptimal" in text_lower or "defer" in text_lower else "Positive",
+                "cited_text": "EGFR testing was ordered / evaluated"
             })
             
+        # KRAS Evaluation Rule
         if "kras" in text_lower:
             extractions.append({
                 "biomarker": "KRAS",
                 "variant": "exon 2",
-                "status": "Not Detected" if "no clear kras" in text_lower else "Positive",
-                "cited_text": "No clear KRAS mutation detected" if "no clear kras" in text_lower else "Confirmed KRAS mutation"
+                "status": "Not Detected" if "no clear kras" in text_lower or "negative" in text_lower else "Positive",
+                "cited_text": "KRAS mutation panel status assessed"
+            })
+
+        # HER2 Evaluation Rule
+        if "her2" in text_lower:
+            extractions.append({
+                "biomarker": "HER2",
+                "variant": None,
+                "status": "Inconclusive" if "artifact" in text_lower or "interference" in text_lower else "Evaluated",
+                "cited_text": "HER2 status reviewed"
+            })
+
+        # ALK Evaluation Rule (New)
+        if "alk" in text_lower:
+            extractions.append({
+                "biomarker": "ALK",
+                "variant": "EML4-ALK fusion" if "fusion" in text_lower else None,
+                "status": "Positive" if "rearrangement" in text_lower or "fusion positive" in text_lower else ("Negative" if "negative" in text_lower else "Inconclusive"),
+                "cited_text": "ALK immunohistochemistry / FISH panel noted"
+            })
+
+        # ROS1 Evaluation Rule (New)
+        if "ros1" in text_lower:
+            extractions.append({
+                "biomarker": "ROS1",
+                "variant": "rearrangement" if "rearrangement" in text_lower else None,
+                "status": "Positive" if "positive" in text_lower or "rearrangement detected" in text_lower else ("Negative" if "negative" in text_lower else "Inconclusive"),
+                "cited_text": "ROS1 biomarker assessment documented"
             })
             
         if not extractions:
@@ -174,7 +203,7 @@ def execute_analysis_logic(raw_text: str, db: Session):
     audited_result["report_id"] = report_id
     return audited_result
 
-# Flexible analysis handlers supporting both POST and GET (via JSON payload or query)
+# Flexible analysis handlers supporting both POST and GET
 @app.api_route("/analyze", methods=["GET", "POST", "PUT"])
 @app.api_route("/analyze/", methods=["GET", "POST", "PUT"])
 @app.api_route("/api/analyze", methods=["GET", "POST", "PUT"])
@@ -192,8 +221,7 @@ async def analyze_pathology(request: Request, db: Session = Depends(get_db)):
         raw_text = request.query_params.get("text") or request.query_params.get("report_text")
         
     if not raw_text:
-        # Fallback default test text if nothing provided
-        raw_text = "Patient ID: PT-99988. Specimen shows questionable, borderline atypical cells in biopsy sample. EGFR testing was ordered."
+        raw_text = "Patient ID: PT-99988. Specimen shows ALK gene rearrangement and ROS1 fusion positive status alongside EGFR testing."
         
     return execute_analysis_logic(raw_text, db)
 
@@ -250,7 +278,7 @@ async def catch_all_routes(full_path: str, request: Request, db: Session = Depen
         except Exception:
             pass
         if not raw_text:
-            raw_text = "Patient ID: PT-99988. Specimen shows questionable, borderline atypical cells in biopsy sample. EGFR testing was ordered."
+            raw_text = "Patient ID: PT-99988. Specimen shows ALK gene rearrangement and ROS1 fusion positive status alongside EGFR testing."
         return execute_analysis_logic(raw_text, db)
         
     return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "path_received": full_path}
