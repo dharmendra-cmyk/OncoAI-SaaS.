@@ -1,14 +1,15 @@
 """
 Clinical Auditor Pro - API Pathology Processor
 Handles analysis requests, enterprise guardrails, quota fallback handling, 
-and immutable 21 CFR Part 11 database logging with universal catch-all routing.
+and immutable 21 CFR Part 11 database logging with flexible field validation.
 """
 
 import os
 import logging
 from datetime import datetime
+from typing import Optional, Any, Dict
 from fastapi import FastAPI, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from models import init_db, ClinicalAuditLog
@@ -34,13 +35,11 @@ def get_db():
 @app.get("/health")
 @app.get("/{path:path}")
 def health_check(path: str = ""):
-    """
-    Health check and wildcard GET handler for frontend status connectivity.
-    """
     return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
 
 class PathologyRequest(BaseModel):
-    text: str
+    text: Optional[str] = None
+    report_text: Optional[str] = None
 
 def execute_analysis_logic(raw_text: str, db: Session):
     try:
@@ -74,7 +73,6 @@ def execute_analysis_logic(raw_text: str, db: Session):
 
     except Exception as e:
         error_msg = str(e)
-        # --- AUTOMATIC FALLBACK ON QUOTA EXHAUSTION (429) ---
         if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
             logger.warning("Gemini API quota exhausted (429). Activating resilient fallback extraction mode.")
             extractions = [
@@ -117,13 +115,18 @@ def execute_analysis_logic(raw_text: str, db: Session):
     
     return audited_result
 
-# Universal Catch-All Route: Captures any POST path sent by the frontend
 @app.post("/analyze")
 @app.post("/analyze/")
 @app.post("/api/analyze")
 @app.post("/api/analyze/")
 @app.post("/{path:path}")
-def analyze_pathology(path: str = "", payload: PathologyRequest = None, db: Session = Depends(get_db)):
-    if payload is None or not payload.text:
-        raise HTTPException(status_code=400, detail="Payload text is required")
-    return execute_analysis_logic(payload.text, db)
+def analyze_pathology(path: str = "", payload: dict = None, db: Session = Depends(get_db)):
+    if not payload:
+        raise HTTPException(status_code=400, detail="Request payload is required")
+    
+    # Extract text regardless of whether frontend sent 'text' or 'report_text'
+    raw_text = payload.get("text") or payload.get("report_text")
+    if not raw_text:
+        raise HTTPException(status_code=422, detail="Field 'text' or 'report_text' is required")
+        
+    return execute_analysis_logic(raw_text, db)
