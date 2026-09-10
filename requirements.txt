@@ -6,3 +6,4 @@ google-genai
 streamlit
 pdfplumber
 requests
+psycopg2-binary
