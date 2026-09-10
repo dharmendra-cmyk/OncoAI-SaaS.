@@ -1,91 +1,83 @@
 import streamlit as st
-from oncoai_guardrails import EnterpriseGuardrails
+import requests
 
-# Page configuration
 st.set_page_config(
-    page_title="OncoAI-SaaS | Enterprise Clinical Intelligence",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Clinical Auditor Pro",
+    page_icon="🧬",
+    layout="wide"
 )
 
-# Initialize enterprise security layer
-guardrails = EnterpriseGuardrails()
-guardrails.enforce_rbac()
+st.title("🧬 Clinical Auditor Pro: Zero-Hallucination Pipeline")
+st.markdown("Automated strategic analysis of clinical protocols powered by Gemini and Enterprise Guardrails.")
 
-# Retrieve user role from session
-current_role = st.session_state.get("user_role", "Data Contributor")
-current_user = st.session_state.get("username", "Enterprise User")
+# Live API Endpoint on Render
+API_BASE_URL = "https://oncoai-saas.onrender.com"
 
-# Main Header
-st.title("Pharmacovigilance & Clinical Intelligence Platform")
-st.markdown(f"*Logged in as:* **{current_user}** | *Enterprise Tier:* **{current_role} Access**")
-st.markdown("---")
-
-# Multi-Tier Tab Navigation based on Enterprise Role
-if current_role == "Administrator":
-    tab1, tab2, tab3 = st.tabs(["📊 Executive Impact Dashboard", "🔍 Compliance & Audit Logs", "⚙️ Enterprise Governance"])
-elif current_role == "Auditor":
-    tab1, tab2 = st.tabs(["🔍 Compliance & Audit Logs", "📊 Executive Impact Dashboard"])
-else:
-    tab1, tab2 = st.tabs(["📥 Protocol Data Input", "📊 Executive Impact Dashboard"])
-
-# --- TAB 1: Dashboard / Metrics ---
-with tab1 if "tab1" in locals() else st.container():
-    if current_role != "Data Contributor":
-        st.subheader("Impact Dashboard")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Signals Processed", "4", delta="+1 today")
-        col2.metric("High Priority Risks", "2", delta="-1 from baseline", delta_color="inverse")
-        col3.metric("Hours Saved", "9.3 hrs", delta="+2.1 hrs")
-        
-        st.markdown("---")
-        st.subheader("Active Signal Tracking")
-        st.dataframe({
-            "Signal_ID": ["SIG-001", "SIG-002", "SIG-003", "SIG-004"],
-            "Severity": ["High", "Medium", "High", "Low"],
-            "Patient_ID": ["P-101", "P-102", "P-103", "P-104"],
-            "Status": ["New", "Under Review", "New", "Closed"]
-        }, use_container_width=True)
+# Sidebar for Navigation / Status
+st.sidebar.header("System Status")
+try:
+    health_res = requests.get(f"{API_BASE_URL}/")
+    if health_res.status_code == 200:
+        st.sidebar.success("Backend: ONLINE (Render)")
     else:
-        st.subheader("Data Contributor Portal")
-        st.info("Upload new clinical protocol batches or pathology files for automated initial parsing.")
-        uploaded_file = st.file_uploader("Upload Clinical Protocol (.csv or .pdf)", type=["csv", "pdf"])
-        if uploaded_file:
-            st.success("File uploaded successfully and queued for agentic parsing.")
+        st.sidebar.warning("Backend: Degraded")
+except Exception:
+    st.sidebar.error("Backend: OFFLINE")
 
-# --- TAB 2: Compliance & Audit Logs ---
-if current_role in ["Administrator", "Auditor"]:
-    with tab2 if "tab2" in locals() else st.container():
-        st.subheader("Compliance Export & SHA-256 Verification")
-        sample_data = b"OncoAI-SaaS-Enterprise-Audit-Stream"
-        diag = guardrails.run_iq_oq_pq_diagnostics(sample_data)
+# Main Interface Tabs
+tab1, tab2 = st.tabs(["📊 Analyze Pathology", "📜 Audit History"])
 
-        st.write(f"**Diagnostic Status:** {diag['status']} ({diag['compliance_standard']})")
-        st.text(f"Document Fingerprint (SHA-256): {diag['sha256_hash']}")
-        st.info("This unique fingerprint ensures the audit report has not been altered, satisfying 21 CFR Part 11.")
+with tab1:
+    st.subheader("Pathology Report Analysis")
+    report_input = st.text_area(
+        "Paste Pathology Report Text:",
+        placeholder="Enter patient biomarker findings, mutation status, and clinical notes here...",
+        height=150
+    )
 
-        if st.button("Download Certified Audit Report (CSV)"):
-            st.download_button(
-                label="Confirm Download",
-                data=sample_data,
-                file_name=f"Enterprise_Audit_{diag['sha256_hash'][:8]}.csv",
-                mime="text/csv"
-            )
+    if st.button("Run Zero-Hallucination Analysis", type="primary"):
+        if not report_input.strip():
+            st.warning("Please enter valid report text before running analysis.")
+        else:
+            with st.spinner("Processing through Gemini & enterprise guardrails..."):
+                try:
+                    payload = {"report_text": report_input}
+                    response = requests.post(f"{API_BASE_URL}/api/v1/analyze-pathology", json=payload)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        st.success(f"Analysis Successful! Saved under Report ID: **{result.get('report_id')}**")
+                        
+                        # Display Metrics
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("Status", result.get("status"))
+                        col2.metric("Confidence Score", f"{result.get('confidence_score', 0.0) * 100:.1f}%")
+                        col3.metric("Review Required", str(result.get("review_required")))
 
-        st.markdown("### Immutable Audit Trail")
-        st.dataframe({
-            "timestamp": [diag["timestamp"], diag["timestamp"]],
-            "user": [current_user, current_user],
-            "action": ["Protocol Evaluation Verified", "Compliance Export Generated"],
-            "file_hash": [diag["sha256_hash"][:16] + "...", diag["sha256_hash"][:16] + "..."]
-        }, use_container_width=True)
+                        st.subheader("Extracted Biomarkers & Audit Details")
+                        st.json(result)
+                    else:
+                        st.error(f"API Error ({response.status_code}): {response.text}")
+                except Exception as e:
+                    st.error(f"Failed to connect to backend: {str(e)}")
 
-# --- TAB 3: Governance (Admin Only) ---
-if current_role == "Administrator":
-    with tab3:
-        st.subheader("Enterprise Governance & Tenant Controls")
-        st.checkbox("Enforce Strict AES-256 Encryption at Rest", value=True)
-        st.checkbox("Enable Automated IQ/OQ/PQ Self-Diagnostics on Boot", value=True)
-        st.selectbox("Active VPC Environment", ["AWS GovCloud / Secure US-East", "GCP Enterprise Healthcare Cloud"])
-        if st.button("Save Governance Configuration"):
-            st.success("Enterprise policies updated and propagated across multi-tenant nodes.")
+with tab2:
+    st.subheader("Recent Database Audit Logs")
+    if st.button("Refresh Audit History"):
+        try:
+            history_res = requests.get(f"{API_BASE_URL}/api/v1/audit-history")
+            if history_res.status_code == 200:
+                history_data = history_res.json()
+                if history_data:
+                    for audit in history_data:
+                        with st.expander(f"Report ID: {audit['report_id']} | Date: {audit['created_at']} | Status: {audit['status']}"):
+                            st.write(f"**Overall Confidence:** {audit['overall_confidence']}")
+                            st.write(f"**Review Required:** {audit['review_required']}")
+                            st.write("**Extractions:**")
+                            st.json(audit['extractions'])
+                else:
+                    st.info("No audit logs found yet.")
+            else:
+                st.error("Could not fetch audit history.")
+        except Exception as e:
+            st.error(f"Connection error: {str(e)}")
