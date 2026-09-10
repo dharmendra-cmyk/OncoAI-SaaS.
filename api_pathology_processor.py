@@ -160,7 +160,7 @@ def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
                 detection_status=ext.get("detection_status"),
                 cited_text=ext.get("cited_text"),
                 is_verbatim_match=ext.get("is_verbatim_match", True),
-                confidence_score=ext.get("confidence_score"),
+                confidence_score=ext.get("confidence_score", 0.95),
                 therapy_mapping=ext.get("therapy_mapping")
             )
             db.add(db_ext)
