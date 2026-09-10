@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, D
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from google import genai
 from google.genai import types
-
+from oncoai_guardrails import process_and_guardrail_extraction
 
 
 DATABASE_URL = "sqlite:////tmp/oncoai_audit.db"
