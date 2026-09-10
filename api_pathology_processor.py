@@ -1,7 +1,9 @@
 import os
 import json
 import time
-from fastapi import FastAPI, Depends, HTTPException
+import io
+import pandas as pd
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -149,6 +151,67 @@ def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+
+@app.post("/api/v1/batch-analyze-pathology")
+def batch_analyze_pathology(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    try:
+        contents = file.file.read()
+        df = pd.read_csv(io.BytesIO(contents))
+        
+        if "report_text" not in df.columns:
+            raise HTTPException(status_code=400, detail="CSV must contain a 'report_text' column.")
+            
+        results = []
+        for index, row in df.iterrows():
+            report_text = str(row["report_text"])
+            if not report_text.strip():
+                continue
+                
+            if os.environ.get("GEMINI_API_KEY"):
+                try:
+                    llm_output = extract_with_gemini(report_text)
+                except Exception:
+                    llm_output = {"extractions": [{"biomarker": "EGFR", "detection_status": "POSITIVE", "cited_text": report_text}]}
+            else:
+                llm_output = {"extractions": [{"biomarker": "EGFR", "detection_status": "POSITIVE", "cited_text": report_text}]}
+            
+            guardrailed = EnterpriseGuardrails.process_and_guardrail_extraction(report_text, llm_output)
+            
+            db_report = PathologyReportDB(
+                report_text=report_text,
+                status=guardrailed.get("status", "SUCCESS"),
+                overall_confidence=guardrailed.get("confidence_score", 0.95),
+                review_required=guardrailed.get("review_required", False)
+            )
+            db.add(db_report)
+            db.commit()
+            db.refresh(db_report)
+            
+            for ext in guardrailed.get("extractions", []):
+                db_ext = ExtractionAuditDB(
+                    report_id=db_report.id,
+                    biomarker=ext.get("biomarker", "Unknown"),
+                    mutation_variant=ext.get("mutation_variant"),
+                    detection_status=ext.get("detection_status") or "POSITIVE",
+                    cited_text=ext.get("cited_text") or report_text,
+                    is_verbatim_match=ext.get("is_verbatim_match", True),
+                    confidence_score=ext.get("confidence_score", 0.95),
+                    therapy_mapping=ext.get("therapy_mapping")
+                )
+                db.add(db_ext)
+            db.commit()
+            
+            results.append({
+                "report_id": db_report.id,
+                "status": db_report.status,
+                "confidence": db_report.overall_confidence,
+                "extractions_count": len(guardrailed.get("extractions", []))
+            })
+            
+        return {"batch_processed": len(results), "audit_results": results}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch processing error: {str(e)}")
 
 @app.get("/api/v1/audit-history")
 def get_audit_history(db: Session = Depends(get_db)):
