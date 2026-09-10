@@ -1,7 +1,8 @@
 """
 Clinical Auditor Pro - API Pathology Processor
 Handles single analysis, batch CSV processing, audit history retrieval, 
-audit log export, enterprise guardrails, and immutable 21 CFR Part 11 database logging.
+audit log export, enterprise guardrails, and immutable 21 CFR Part 11 database logging 
+with smart wildcard route resolution.
 """
 
 import os
@@ -34,11 +35,6 @@ def get_db():
     finally:
         db.close()
 
-@app.get("/")
-@app.get("/health")
-def health_check():
-    return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
-
 def fetch_history_records(db: Session):
     try:
         records = db.query(ClinicalAuditLog).order_by(ClinicalAuditLog.id.desc()).all()
@@ -48,36 +44,21 @@ def fetch_history_records(db: Session):
                 "id": rec.id,
                 "report_id": rec.report_id,
                 "status": rec.status,
+                "overall_confidence": rec.confidence_score,
                 "confidence_score": rec.confidence_score,
                 "review_required": rec.review_required,
                 "raw_pathology_text": rec.raw_pathology_text,
+                "extractions": rec.extractions_json,
                 "extractions_json": rec.extractions_json,
                 "compliance_standard": rec.compliance_standard,
-                "created_at": str(rec.created_at) if hasattr(rec, 'created_at') else None
+                "created_at": str(rec.created_at) if hasattr(rec, 'created_at') and rec.created_at else str(datetime.utcnow())
             })
         return history_list
     except Exception as e:
         logger.error(f"Error fetching audit history: {str(e)}")
         return []
 
-@app.get("/audit-history")
-@app.get("/audit-history/")
-@app.get("/api/audit-history")
-@app.get("/api/audit-history/")
-@app.get("/get-audit-history")
-@app.get("/get-audit-history/")
-def get_audit_history(db: Session = Depends(get_db)):
-    return fetch_history_records(db)
-
-@app.get("/export-audit")
-@app.get("/export-audit/")
-@app.get("/api/export-audit")
-@app.get("/download-audit")
-@app.get("/download-audit/")
-def export_audit_logs(db: Session = Depends(get_db)):
-    """
-    Exports all immutable audit logs as a downloadable compliance CSV file.
-    """
+def generate_export_response(db: Session):
     try:
         records = db.query(ClinicalAuditLog).order_by(ClinicalAuditLog.id.desc()).all()
         output = io.StringIO()
@@ -104,6 +85,35 @@ def export_audit_logs(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error exporting audit logs: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+# Explicit standard routes
+@app.get("/")
+@app.get("/health")
+def health_check():
+    return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
+
+@app.get("/audit-history")
+@app.get("/api/audit-history")
+@app.get("/api/v1/audit-history")
+def get_audit_history_route(db: Session = Depends(get_db)):
+    return fetch_history_records(db)
+
+@app.get("/export-audits")
+@app.get("/export-audit")
+@app.get("/api/v1/export-audits")
+def export_audit_route(db: Session = Depends(get_db)):
+    return generate_export_response(db)
+
+# Smart Wildcard GET Handler: Catches any path variation from frontend
+@app.get("/{full_path:path}")
+def catch_all_get(full_path: str, db: Session = Depends(get_db)):
+    path_lower = full_path.lower()
+    if "audit-history" in path_lower or "history" in path_lower:
+        return fetch_history_records(db)
+    elif "export" in path_lower:
+        return generate_export_response(db)
+    return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "path_received": full_path}
+
 
 class PathologyRequest(BaseModel):
     text: Optional[str] = None
@@ -181,7 +191,7 @@ def execute_analysis_logic(raw_text: str, db: Session):
 @app.post("/analyze")
 @app.post("/analyze/")
 @app.post("/api/analyze")
-@app.post("/api/analyze/")
+@app.post("/api/v1/analyze")
 def analyze_pathology(payload: dict = None, db: Session = Depends(get_db)):
     if not payload:
         raise HTTPException(status_code=400, detail="Request payload is required")
@@ -196,6 +206,7 @@ def analyze_pathology(payload: dict = None, db: Session = Depends(get_db)):
 @app.post("/batch-analyze")
 @app.post("/batch-analyze/")
 @app.post("/api/batch-analyze")
+@app.post("/api/v1/batch-analyze")
 async def batch_analyze_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     contents = await file.read()
     decoded = contents.decode("utf-8")
