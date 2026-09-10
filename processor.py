@@ -1,15 +1,18 @@
 """
 Clinical Auditor Pro - API Pathology Processor
-Handles analysis requests, enterprise guardrails, quota fallback handling, 
-and immutable 21 CFR Part 11 database logging with flexible field validation.
+Handles single analysis, batch CSV processing, enterprise guardrails, 
+quota fallback handling, and immutable 21 CFR Part 11 database logging.
 """
 
 import os
+import io
+import csv
 import logging
 from datetime import datetime
-from typing import Optional, Any, Dict
-from fastapi import FastAPI, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from typing import Optional, Any, Dict, List
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from models import init_db, ClinicalAuditLog
@@ -43,7 +46,6 @@ class PathologyRequest(BaseModel):
 
 def execute_analysis_logic(raw_text: str, db: Session):
     try:
-        # --- PRIMARY EXTRACTION PATH ---
         extractions = []
         text_lower = raw_text.lower()
         
@@ -90,11 +92,9 @@ def execute_analysis_logic(raw_text: str, db: Session):
                 detail=f"Processing error: {error_msg}"
             )
 
-    # Run through Enterprise Guardrails
     audited_result = EnterpriseGuardrails.process_and_guardrail_extraction(raw_text, extractions)
 
-    # Save immutable electronic audit log (21 CFR Part 11 Compliance)
-    report_id = f"RPT-{int(datetime.utcnow().timestamp())}"
+    report_id = f"RPT-{int(datetime.utcnow().timestamp())}-{os.urandom(2).hex()}"
     
     audit_record = ClinicalAuditLog(
         report_id=report_id,
@@ -111,22 +111,59 @@ def execute_analysis_logic(raw_text: str, db: Session):
     db.refresh(audit_record)
 
     audited_result["report_id"] = report_id
-    logger.info(f"Successfully processed and logged Report ID: {report_id}")
-    
     return audited_result
 
 @app.post("/analyze")
 @app.post("/analyze/")
 @app.post("/api/analyze")
 @app.post("/api/analyze/")
-@app.post("/{path:path}")
-def analyze_pathology(path: str = "", payload: dict = None, db: Session = Depends(get_db)):
+def analyze_pathology(payload: dict = None, db: Session = Depends(get_db)):
     if not payload:
         raise HTTPException(status_code=400, detail="Request payload is required")
     
-    # Extract text regardless of whether frontend sent 'text' or 'report_text'
     raw_text = payload.get("text") or payload.get("report_text")
     if not raw_text:
         raise HTTPException(status_code=422, detail="Field 'text' or 'report_text' is required")
         
     return execute_analysis_logic(raw_text, db)
+
+
+@app.post("/batch-analyze")
+@app.post("/batch-analyze/")
+@app.post("/api/batch-analyze")
+async def batch_analyze_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Processes an uploaded CSV file containing multiple pathology records,
+    runs guardrails on each, saves logs, and returns a downloadable summary CSV.
+    """
+    contents = await file.read()
+    decoded = contents.decode("utf-8")
+    reader = csv.DictReader(io.StringIO(decoded))
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["report_id", "status", "confidence_score", "review_required", "raw_text", "compliance_standard"])
+    
+    processed_count = 0
+    for row in reader:
+        text = row.get("text") or row.get("report_text") or row.get("pathology_text")
+        if text:
+            result = execute_analysis_logic(text, db)
+            writer.writerow([
+                result.get("report_id"),
+                result.get("status"),
+                result.get("confidence_score"),
+                result.get("review_required"),
+                text[:100].replace("\n", " "),
+                result.get("compliance_standard", "21 CFR Part 11")
+            ])
+            processed_count += 1
+
+    output.seek(0)
+    logger.info(f"Successfully processed batch CSV with {processed_count} records.")
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=batch_audit_results.csv"}
+    )
