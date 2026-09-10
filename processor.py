@@ -39,14 +39,7 @@ def get_db():
 def health_check():
     return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
 
-@app.get("/audit-history")
-@app.get("/audit-history/")
-@app.get("/api/audit-history")
-@app.get("/api/audit-history/")
-def get_audit_history(db: Session = Depends(get_db)):
-    """
-    Retrieves all immutable 21 CFR Part 11 audit records from the database.
-    """
+def fetch_history_records(db: Session):
     try:
         records = db.query(ClinicalAuditLog).order_by(ClinicalAuditLog.id.desc()).all()
         history_list = []
@@ -66,6 +59,15 @@ def get_audit_history(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error fetching audit history: {str(e)}")
         return []
+
+@app.get("/audit-history")
+@app.get("/audit-history/")
+@app.get("/api/audit-history")
+@app.get("/api/audit-history/")
+@app.get("/get-audit-history")
+@app.get("/get-audit-history/")
+def get_audit_history(db: Session = Depends(get_db)):
+    return fetch_history_records(db)
 
 class PathologyRequest(BaseModel):
     text: Optional[str] = None
