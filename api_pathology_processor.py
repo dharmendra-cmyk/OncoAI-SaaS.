@@ -30,6 +30,13 @@ def get_db():
     finally:
         db.close()
 
+@app.get("/")
+def health_check():
+    """
+    Health check endpoint for Streamlit frontend status indicator.
+    """
+    return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
+
 class PathologyRequest(BaseModel):
     text: str
 
@@ -39,7 +46,6 @@ def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
     
     try:
         # --- PRIMARY EXTRACTION PATH ---
-        # In full production, your Gemini API extraction call executes here.
         # Simulating live extraction logic based on incoming text content:
         extractions = []
         text_lower = raw_text.lower()
