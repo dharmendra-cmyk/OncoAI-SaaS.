@@ -31,19 +31,17 @@ def get_db():
         db.close()
 
 @app.get("/")
+@app.get("/health")
 def health_check():
     """
-    Health check endpoint for Streamlit frontend status indicator.
+    Health check endpoints for Streamlit frontend status indicator.
     """
     return {"status": "ONLINE", "service": "Clinical Auditor Pro API", "compliance": "21 CFR Part 11"}
 
 class PathologyRequest(BaseModel):
     text: str
 
-@app.post("/analyze")
-def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
-    raw_text = payload.text
-    
+def execute_analysis_logic(raw_text: str, db: Session):
     try:
         # --- PRIMARY EXTRACTION PATH ---
         extractions = []
@@ -117,3 +115,11 @@ def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
     logger.info(f"Successfully processed and logged Report ID: {report_id}")
     
     return audited_result
+
+# Register all possible route permutations to eliminate 404 errors completely
+@app.post("/analyze")
+@app.post("/analyze/")
+@app.post("/api/analyze")
+@app.post("/api/analyze/")
+def analyze_pathology(payload: PathologyRequest, db: Session = Depends(get_db)):
+    return execute_analysis_logic(payload.text, db)
