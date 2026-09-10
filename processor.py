@@ -19,7 +19,7 @@ from models import init_db, ClinicalAuditLog
 app = FastAPI(
     title="Clinical Auditor Pro API",
     description="Zero-Hallucination Oncology Biomarker Extraction & Compliance Suite",
-    version="2.6.0"
+    version="2.7.0"
 )
 
 # Initialize Database SessionLocal
@@ -51,6 +51,7 @@ class FIHRequest(BaseModel):
 
 
 @app.get("/")
+@app.get("/api")
 def read_root():
     return {
         "system": "Clinical Auditor Pro: Zero-Hallucination Pipeline",
@@ -61,6 +62,7 @@ def read_root():
 
 
 @app.post("/analyze-pathology")
+@app.post("/api/analyze-pathology")
 def analyze_pathology(payload: PathologyInput, db: Session = Depends(get_db)):
     """
     Analyzes pathology report text, executes biomarker extraction, 
@@ -109,6 +111,7 @@ def analyze_pathology(payload: PathologyInput, db: Session = Depends(get_db)):
 
 
 @app.get("/audit-history")
+@app.get("/api/audit-history")
 def get_audit_history(db: Session = Depends(get_db)):
     """
     Retrieves all compliance audit logs from the PostgreSQL production database.
@@ -159,6 +162,7 @@ def sign_audit_report(report_id: str, sig_data: ElectronicSignatureRequest, db: 
 
 
 @app.post("/calculate-fih-dose")
+@app.post("/api/calculate-fih-dose")
 def calculate_fih_dose(payload: FIHRequest):
     """
     Calculates First-in-Human (FIH) starting dose using standard allometric scaling 
@@ -179,11 +183,8 @@ def calculate_fih_dose(payload: FIHRequest):
     animal_km = km_factors[species]
     human_km = km_factors["human"]
     
-    # Human Equivalent Dose (HED) calculation = Animal NOAEL * (Animal Km / Human Km)
     hed_mg_kg = payload.animal_noael_mg_kg * (animal_km / human_km)
     recommended_starting_dose_mg = hed_mg_kg * payload.human_weight_kg
-    
-    # Apply standard 1/10th safety factor for Phase 1 FIH trials
     conservative_fih_dose = recommended_starting_dose_mg / 10.0
     
     return {
