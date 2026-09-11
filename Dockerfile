@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose port for Render web service
-EXPOSE 8000
+EXPOSE 10000
 
-# Start FastAPI application using Uvicorn on processor.py
-CMD ["uvicorn", "processor:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start Streamlit application
+CMD ["streamlit", "run", "victoria_rose_app.py", "--server.port=10000", "--server.address=0.0.0.0"]
