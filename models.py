@@ -1,51 +1,41 @@
 """
-Clinical Auditor Pro - Database Models & Initialization
-Supports both SQLite (local development) and PostgreSQL (Render production) 
-with immutable 21 CFR Part 11 audit logging fields.
+OncoAI - Database Models & Pydantic Validation Schemas
+Supports SQLite/PostgreSQL with immutable 21 CFR Part 11 audit logging fields 
+and strict clinical input validation.
 """
 
-import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Text, DateTime
+from pydantic import BaseModel, Field
+from sqlalchemy import Column, Integer, String, Float, Boolean, Text, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
 
 class ClinicalAuditLog(Base):
+    """21 CFR Part 11 compliant immutable audit trail log table."""
     __tablename__ = "clinical_audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
     report_id = Column(String(64), unique=True, index=True, nullable=False)
     status = Column(String(32), nullable=False)
-    confidence_score = Column(Float, nullable=False)
+    confidence_score = Column(Float, nullable=True)
     review_required = Column(Boolean, default=False)
     raw_pathology_text = Column(Text, nullable=False)
-    extractions_json = Column(Text, nullable=False)  # Stored as serialized JSON string or JSON
-    compliance_standard = Column(String(64), default="21 CFR Part 11")
+    extractions_json = Column(Text, nullable=False)  # Stored as serialized JSON string
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    user_identifier = Column(String(128), nullable=False)
+    record_hash = Column(String(128), nullable=False)  # Cryptographic hash for tamper-evidence
 
 
-def init_db():
-    """
-    Initializes the database engine. Automatically detects Render's PostgreSQL 
-    DATABASE_URL environment variable, normalized for SQLAlchemy compatibility.
-    """
-    database_url = os.getenv("DATABASE_URL")
-    
-    if database_url:
-        # Render sometimes provides 'postgres://' which SQLAlchemy requires as 'postgresql://'
-        if database_url.startswith("postgres://"):
-            database_url = database_url.replace("postgres://", "postgresql://", 1)
-        engine = create_engine(database_url, pool_pre_ping=True)
-    else:
-        # Fallback local SQLite engine for development
-        sqlite_path = "sqlite:///./clinical_audits.db"
-        engine = create_engine(sqlite_path, connect_args={"check_same_thread": False})
+# ==========================================
+# Pydantic Validation Models (Step 1)
+# ==========================================
 
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    
-    # Create tables if they do not exist
-    Base.metadata.create_all(bind=engine)
-    
-    return engine, SessionLocal
+class ClinicalQueryRequest(BaseModel):
+    """Strict validation schema for incoming oncology evaluation payloads."""
+    patient_age: int = Field(..., ge=0, le=120, description="Patient age in years (0-120)")
+    psa_level: float = Field(..., ge=0.0, description="PSA level in ng/mL (must be non-negative)")
+    gleason_score: int = Field(..., ge=6, le=10, description="Gleason score (valid range 6 to 10)")
+    clinical_notes: str = Field(..., min_length=5, description="Clinical narrative or pathology details")
+    user_identifier: str = Field(..., description="Clinician or system user ID for audit logging")
