@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all application source code into container
 COPY . .
 
-# Expose port for Render web service
-EXPOSE 10000
+# Expose port (Cloud Run overrides this with the $PORT env variable)
+EXPOSE 8080
 
-# Start Streamlit application
-CMD ["streamlit", "run", "victoria_rose_app.py", "--server.port=10000", "--server.address=0.0.0.0"]
+# Start FastAPI application with Uvicorn
+CMD exec uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080}
