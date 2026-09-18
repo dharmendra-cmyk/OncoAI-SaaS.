@@ -1,14 +1,8 @@
-"""
-OncoAI - Database Models & Pydantic Validation Schemas
-Supports SQLite/PostgreSQL with immutable 21 CFR Part 11 audit logging fields 
-and strict clinical input validation.
-"""
-
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, Integer, String, Float, Boolean, Text, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
 
@@ -21,21 +15,16 @@ class ClinicalAuditLog(Base):
     status = Column(String(32), nullable=False)
     confidence_score = Column(Float, nullable=True)
     review_required = Column(Boolean, default=False)
-    raw_pathology_text = Column(Text, nullable=False)
-    extractions_json = Column(Text, nullable=False)  # Stored as serialized JSON string
+    raw_pathology_text = Column(Text, nullable=True)
+    extractions_json = Column(Text, nullable=True)  # Stored as serialized JSON string
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     user_identifier = Column(String(128), nullable=False)
     record_hash = Column(String(128), nullable=False)  # Cryptographic hash for tamper-evidence
 
-
-# ==========================================
-# Pydantic Validation Models (Step 1)
-# ==========================================
-
 class ClinicalQueryRequest(BaseModel):
-    """Strict validation schema for incoming oncology evaluation payloads."""
-    patient_age: int = Field(..., ge=0, le=120, description="Patient age in years (0-120)")
-    psa_level: float = Field(..., ge=0.0, description="PSA level in ng/mL (must be non-negative)")
-    gleason_score: int = Field(..., ge=6, le=10, description="Gleason score (valid range 6 to 10)")
-    clinical_notes: str = Field(..., min_length=5, description="Clinical narrative or pathology details")
-    user_identifier: str = Field(..., description="Clinician or system user ID for audit logging")
+    patient_age: int = Field(..., ge=0, le=120, description="Patient age in years.")
+    psa_level: float = Field(..., ge=0.0, description="PSA biomarker level.")
+    gleason_score: int = Field(..., ge=2, le=10, description="Gleason score.")
+    clinical_notes: str = Field(..., max_length=1000, description="Clinical pathologist or physician notes.")
+    user_identifier: str = Field(..., min_length=2, description="ID of the clinician submitting the case.")
+    prompt: Optional[str] = Field(default=None, description="Optional natural language query or analysis focus.")
