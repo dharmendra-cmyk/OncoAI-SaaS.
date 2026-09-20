@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OncoAI-Saas | Clinical Audit Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-slate-900 text-white shadow-md py-4 px-6 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl font-bold tracking-tight text-teal-400">OncoAI-Saas</span>
+            <span class="text-xs uppercase bg-teal-900 text-teal-200 px-2.5 py-1 rounded-full font-medium">Production Active</span>
+        </div>
+        <div class="text-sm text-slate-400">Ahluwalia Strategic Ventures LLC</div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-5xl w-full mx-auto p-6 space-y-6">
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h1 class="text-xl font-bold text-slate-800 mb-2">Automated Clinical Pathology Batch Processor</h1>
+            <p class="text-sm text-slate-600 mb-6">Upload your patient biomarker CSV file to evaluate metrics against oncology benchmarks and generate compliance reports.</p>
+
+            <!-- Upload Form -->
+            <div class="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onclick="document.getElementById('csvFile').click()">
+                <input type="file" id="csvFile" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
+                <div id="fileLabel" class="text-sm text-slate-600">
+                    <span class="font-semibold text-teal-600">Click to upload CSV</span> or drag and drop<br>
+                    <span class="text-xs text-slate-400">Required columns: patient_id, biomarker, value, date</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap gap-4 mt-6">
+                <button onclick="runAnalysis()" id="analyzeBtn" class="bg-teal-600 hover:bg-teal-700 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition disabled:opacity-50" disabled>
+                    Run Biomarker Analysis
+                </button>
+                <button onclick="downloadReport()" id="downloadBtn" class="bg-slate-800 hover:bg-slate-900 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition disabled:opacity-50" disabled>
+                    Download Audit Report (.csv)
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsCard" class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-800">Analysis Summary</h2>
+                <div id="summaryBadge" class="text-sm font-semibold px-3 py-1 rounded-full"></div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-600">
+                    <thead class="bg-slate-100 text-slate-700 uppercase text-xs">
+                        <tr>
+                            <th class="p-3">Patient ID</th>
+                            <th class="p-3">Biomarker</th>
+                            <th class="p-3">Value</th>
+                            <th class="p-3">Threshold Limit</th>
+                            <th class="p-3">Date</th>
+                            <th class="p-3">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTableBody" class="divide-y divide-slate-200"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
+        &copy; 2026 OncoAI-Saas. Clinical Decision Support Enterprise Module.
+    </footer>
+
+    <script>
+        let selectedFile = null;
+
+        function handleFileSelect(event) {
+            selectedFile = event.target.files[0];
+            if (selectedFile) {
+                document.getElementById('fileLabel').innerHTML = `<span class="font-semibold text-slate-800">${selectedFile.name}</span> selected.`;
+                document.getElementById('analyzeBtn').disabled = false;
+                document.getElementById('downloadBtn').disabled = false;
+            }
+        }
+
+        async function runAnalysis() {
+            if (!selectedFile) return;
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+
+            const btn = document.getElementById('analyzeBtn');
+            btn.textContent = "Processing...";
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/v1/ingest-pathology', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (!response.ok) throw new Error(data.detail || "Analysis failed");
+
+                // Populate results UI
+                document.getElementById('resultsCard').classList.remove('hidden');
+                const badge = document.getElementById('summaryBadge');
+                if (data.anomalies_flagged > 0) {
+                    badge.className = "text-sm font-semibold px-3 py-1 rounded-full bg-red-100 text-red-700";
+                    badge.textContent = `${data.anomalies_flagged} Anomalies Flagged`;
+                } else {
+                    badge.className = "text-sm font-semibold px-3 py-1 rounded-full bg-green-100 text-green-700";
+                    badge.textContent = "All Records Normal";
+                }
+
+                const tbody = document.getElementById('resultsTableBody');
+                tbody.innerHTML = '';
+                data.analysis_results.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const statusClass = row.status.includes('Elevated') ? 'text-red-600 font-semibold' : 'text-slate-600';
+                    tr.innerHTML = `
+                        <td class="p-3 font-medium text-slate-900">${row.patient_id}</td>
+                        <td class="p-3">${row.biomarker}</td>
+                        <td class="p-3">${row.value}</td>
+                        <td class="p-3">${row.threshold_limit}</td>
+                        <td class="p-3">${row.date}</td>
+                        <td class="p-3 ${statusClass}">${row.status}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                alert("Error: " + err.message);
+            } finally {
+                btn.textContent = "Run Biomarker Analysis";
+                btn.disabled = false;
+            }
+        }
+
+        async function downloadReport() {
+            if (!selectedFile) return;
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+
+            try {
+                const response = await fetch('/api/v1/export-audit-report', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) throw new Error("Failed to generate report");
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "clinical_audit_report.csv";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
