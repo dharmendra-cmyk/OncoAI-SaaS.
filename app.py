@@ -1,8 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 import pandas as pd
 import io
 import csv
+import os
 
 app = FastAPI(title="OncoAI-Saas", version="0.1.0")
 
@@ -12,6 +13,14 @@ BENCHMARK_THRESHOLDS = {
     "CA19-9": 37.0,  # U/mL
     "PSA": 4.0       # ng/mL
 }
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """Serve the interactive frontend dashboard directly from FastAPI."""
+    if os.path.exists("index.html"):
+        with open("index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h3>OncoAI-Saas Dashboard UI (index.html not found in root)</h3>"
 
 @app.post("/api/v1/ingest-pathology")
 async def ingest_pathology_batch(file: UploadFile = File(...)):
