@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, HTMLResponse
+from mangum import Mangum
 import io
 import csv
 import os
@@ -101,3 +102,6 @@ async def export_audit_report(file: UploadFile = File(...)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=clinical_audit_report.csv"}
     )
+
+# ASGI adapter handler for Vercel serverless functions
+handler = Mangum(app)
