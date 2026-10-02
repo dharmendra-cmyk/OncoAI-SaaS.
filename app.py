@@ -10,7 +10,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize the custom predictive module
 predictor = DiagnosticPredictor()
 
 class BiopsyType(str, Enum):
@@ -56,12 +55,8 @@ def health_check():
 @app.post("/api/v1/diagnostic/infer", tags=["Diagnostic Inference"])
 async def diagnostic_infer(payload: DiagnosticCasePayload):
     try:
-        # Convert Pydantic payload to dictionary for the prediction module
         payload_dict = payload.model_dump()
-        
-        # Execute multi-omic risk scoring prediction
         result = predictor.compute_risk_score(payload_dict)
-        
         return {
             "case_id": payload.case_id,
             "biopsy_type": payload.biopsy_type,
